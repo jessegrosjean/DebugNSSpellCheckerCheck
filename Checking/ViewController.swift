@@ -1,5 +1,9 @@
 import Cocoa
 
+extension NSSpellChecker.OptionKey {
+    static var suppressKeyEventData = Self(rawValue: "SuppressKeyEventData")
+}
+
 class ViewController: NSViewController {
 
     @IBOutlet weak var textField: NSTextField!
@@ -7,15 +11,12 @@ class ViewController: NSViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-
-        // This seems needed in all both manual and programatic check cases
-        // I don't know why, but if I don't initially check an empty string
-        // then no matter input I never get "correction" the first time I
-        // check a string.
-        self.performCheck("")
     }
     
     override func viewDidAppear() {
+        // NOTE: These comments are only true if you don't pass in .suppressKeyEventData
+        // Comment that option out to see the standard behavior, keep it in if you want correction results.
+        //
         // I can continue this pattern as long as I want and I never
         // get text checking "corrections"
         //
@@ -31,19 +32,27 @@ class ViewController: NSViewController {
             }
         }
     }
-
-    func performCheck(_ string: String) {
+    
+    func performCheck(_ string: String, selection: NSRange? = nil) {
+        let types: NSTextCheckingResult.CheckingType = [.correction, .spelling]
+        let utf16Count = string.utf16.count
+        let selection = selection ?? .init(utf16Count..<utf16Count)
+        let range: NSRange = .init(0..<utf16Count)
+        
         let results = NSSpellChecker.shared.check(
             string,
-            range: .init(0..<string.utf16.count),
-            types: NSTextCheckingAllTypes,
-            options: nil,
+            range: range,
+            types: types.rawValue,
+            options: [
+                .selectedRange : NSValue(range: selection),
+                .suppressKeyEventData: true, // private, needed for corrections
+            ],
             inSpellDocumentWithTag: 0,
             orthography: nil,
             wordCount: nil
         )
-        
-        let resultString = "Checking: \"\(string)\"\n\(results)"
+                
+        let resultString = "Inputs:\(string), \(range), \(selection)\nResults: \"\(string)\"\n\(results)"
         
         textView.textStorage?.beginEditing()
         textView.textStorage?.replaceCharacters(
@@ -52,13 +61,15 @@ class ViewController: NSViewController {
         )
         textView.textStorage?.endEditing()
     }
-    
 }
 
 extension ViewController: NSTextFieldDelegate {
     
     func controlTextDidChange(_ obj: Notification) {
-        performCheck(textField.stringValue)
+        self.performCheck(
+            self.textField.stringValue,
+            selection: (self.view.window?.fieldEditor(false, for: self.textField) as? NSTextView)?.selectedRange()
+        )
     }
     
 }
